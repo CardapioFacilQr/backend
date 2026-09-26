@@ -54,3 +54,14 @@ pids
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# TypeScript incremental build info
+*.tsbuildinfo
+
+# Uploads locais
+/uploads
+
+# Build do frontend copiado para servir pela API
+/public/*
+!/public/.gitkeep
+

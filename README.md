@@ -1,114 +1,242 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Cardápio QR — API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Gerador de QR Code para cardápios de restaurantes.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+**Fluxo:** o dono se cadastra → sobe o cardápio (imagem, PDF ou itens manuais) → a API salva no banco e gera uma URL pública única (`/m/<slug>`) → gera o QR Code dessa URL → o cliente escaneia e o navegador abre o cardápio.
 
-## Description
+**Arquitetura:** 3 camadas em 2 containers.
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+| Container | Conteúdo |
+|-----------|----------|
+| `app` | API NestJS + frontend (build do React/Vite servido a partir de `public/`) |
+| `db`  | PostgreSQL 16 (acessível só pela rede interna) |
 
-## Project setup
+---
+
+## Endpoints
+
+Documentação interativa (Swagger): **`/api/docs`**.
+
+| Método | Rota | Auth | Descrição |
+|--------|------|------|-----------|
+| POST | `/api/auth/register` | — | Cadastro (`name`, `email`, `password`, `restaurantName?`) |
+| POST | `/api/auth/login` | — | Login → `accessToken` (JWT) |
+| GET | `/api/auth/me` | JWT | Usuário logado |
+| POST / GET | `/api/restaurants` | JWT | Cria / lista restaurantes do dono |
+| POST | `/api/menus` | JWT | Multipart: `title`, `restaurantId?`, `file?` (jpeg/png/webp/pdf) |
+| GET | `/api/menus` | JWT | Lista os cardápios do dono |
+| GET / PATCH / DELETE | `/api/menus/:id` | JWT (dono) | Detalha / altera (aceita novo `file`) / remove |
+| GET | `/api/menus/:id/qrcode?format=png\|svg&download=true&size=512` | JWT (dono) | Imagem do QR Code |
+| GET / POST | `/api/menus/:menuId/items` | JWT (dono) | Itens do cardápio manual |
+| PATCH / DELETE | `/api/menus/:menuId/items/:itemId` | JWT (dono) | Altera / remove item |
+| GET | `/m/:publicSlug` | público | **Destino do QR Code** (ver abaixo) |
+| GET | `/api/public/menus/:publicSlug` | público | Dados do cardápio em JSON |
+| GET | `/api/public/menus/:publicSlug/qrcode` | público | QR Code (útil para `<img src>` no frontend) |
+| GET | `/api/health` | público | `{"status":"ok"}` se o banco responder (usado pelo healthcheck) |
+| GET | `/uploads/<arquivo>` | público | Arquivos enviados |
+
+Comportamento de `/m/:publicSlug`:
+- **navegador + frontend em `public/`**: entrega o `index.html` da SPA, que busca `/api/public/menus/:slug`;
+- **navegador sem frontend**: redireciona direto para a imagem/PDF do cardápio;
+- **fetch/curl** (sem `Accept: text/html`): JSON com os dados.
+
+Upload: o mimetype é validado **e** a assinatura do arquivo (magic bytes) também; o arquivo é salvo como `<uuid>.<ext>` (o nome original nunca é usado) e o tamanho é limitado por `MAX_UPLOAD_MB` (retorna 413 se passar).
+
+---
+
+## Variáveis de ambiente
+
+Veja [.env.example](.env.example). Principais:
+
+| Variável | Padrão | Observação |
+|----------|--------|------------|
+| `PORT` | `3000` | |
+| `NODE_ENV` | `development` | `production` na imagem |
+| `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_NAME` | `localhost` / `5432` / `postgres` / `cardapio` | |
+| `DB_PASSWORD` ou `DB_PASSWORD_FILE` | — | `*_FILE` lê o valor de um arquivo (Docker secret) |
+| `DB_SYNCHRONIZE` | `false` | `true` só em dev (cria/atualiza tabelas) |
+| `DB_RETRY_ATTEMPTS` / `DB_RETRY_DELAY_MS` | `10` / `3000` | Reconexão ao banco na inicialização |
+| `JWT_SECRET` ou `JWT_SECRET_FILE` | — | **Obrigatório em produção** |
+| `JWT_EXPIRES_IN` | `1d` | |
+| `PUBLIC_BASE_URL` | `http://localhost:PORT` | Base da URL do QR Code: `${PUBLIC_BASE_URL}/m/<slug>` |
+| `UPLOAD_DIR` | `/app/uploads` (prod) / `./uploads` | |
+| `MAX_UPLOAD_MB` | `10` | |
+| `CORS_ORIGIN` | `*` | Lista separada por vírgula |
+
+---
+
+## Rodar localmente
+
+### Opção A — tudo em Docker
 
 ```bash
-$ npm install
+docker compose -f docker-compose.dev.yml up --build
+curl http://localhost:3000/api/health      # {"status":"ok","database":"up"}
 ```
 
-## Compile and run the project
+### Opção B — API no host, banco no Docker
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+cp .env.example .env
+docker compose -f docker-compose.dev.yml up -d db
+npm install
+npm run start:dev
 ```
 
-## Run tests
+---
+
+## Frontend (opcional)
+
+O frontend (React + Vite, repositório `CardapioFacil`) é servido pela própria API quando o build está em `public/`:
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+# no repositório do frontend
+npm run build
+# copie o conteúdo de dist/ para a pasta public/ desta API (antes do docker build)
+cp -r ../CardapioFacil/dist/* ./public/
 ```
 
-## Deployment
+A API serve os assets e faz fallback para `index.html` em qualquer rota que não seja `/api`, `/uploads` ou `/m`.
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+> O frontend usa `vite-plugin-pwa` com `navigateFallback: '/index.html'`. Adicione
+> `navigateFallbackDenylist: [/^\/api/, /^\/uploads/]` no `workbox` do `vite.config.ts`,
+> senão o service worker entrega a SPA no lugar de `/api/docs` e dos arquivos enviados.
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+---
+
+## Build da imagem
+
+O Swarm **não faz build**: o `stack.yaml` usa a imagem `cardapio-api:latest`, que precisa existir na VPS.
+Na VPS (nó único), dentro da pasta do projeto:
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+docker build -t cardapio-api:latest .
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+- A imagem roda como usuário `node` (não-root). Para conferir: `docker run --rm --entrypoint id cardapio-api:latest` → `uid=1000(node)`.
+- O Node 20 está fora de suporte (EOL em abril/2026). Para usar o 22 sem editar o Dockerfile: `--build-arg NODE_VERSION=22`.
+- Se um dia usar um registry: `docker build -t SEU_USUARIO/cardapio-api:1.0.0 . && docker push SEU_USUARIO/cardapio-api:1.0.0`
+  e troque o `image:` do serviço `api` no `stack.yaml` (registry privado: cadastre as credenciais em *Registries* no Portainer).
 
-## Observability
+---
 
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
+## Deploy no Docker Swarm (Traefik + Portainer)
 
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
+O backend fica em **https://api.treifit.com.br**, exposto pelo Traefik que já roda na VPS:
 
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
+- rede externa `network_public` (a mesma do Traefik), entrypoint `websecure`, certificado via `letsencrypt`;
+- nenhuma porta é publicada: o Traefik encaminha para a porta 3000 do serviço `api`;
+- o `db` fica só na rede interna `app_net` (overlay, `internal: true`), fora da `network_public`.
 
-## Resources
+Antes do primeiro deploy, o DNS de `api.treifit.com.br` precisa apontar para o IP da VPS
+(registro A), senão o Let's Encrypt não emite o certificado.
 
-Check out a few resources that may come in handy when working with NestJS:
+### Senhas
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observer](https://observer.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+A senha do banco (`DB_PASSWORD` / `POSTGRES_PASSWORD`) e o `JWT_SECRET` estão escritos direto no
+`stack.yaml`, no `docker-compose.dev.yml` e no `Dockerfile`. Para trocar, altere **todos** eles com o mesmo valor.
 
-## Support
+> Esses valores ficam dentro da imagem (`docker history`) e no repositório: mantenha o repositório
+> e o registry **privados**.
+> A senha do Postgres só é aplicada quando o volume `pgdata` é criado pela primeira vez.
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+### Pelo Portainer
 
-## Stay in touch
+1. **Stacks → Add stack** → nome `cardapio` → *Web editor*: cole o `stack.yaml`.
+2. No **primeiro deploy**, troque `DB_SYNCHRONIZE: "false"` por `"true"` (cria as tabelas) e clique em **Deploy the stack**.
+3. Quando `https://api.treifit.com.br/api/health` responder `{"status":"ok"}`, volte para `"false"` no *Editor* e clique em **Update the stack**.
+4. Nova versão: rode `docker build -t cardapio-api:latest .` de novo na VPS e force a atualização do serviço
+   (`docker service update --force cardapio_api`, ou *Update the stack* no Portainer). O `update_config` usa
+   `start-first`, sem downtime; se o healthcheck falhar, o Swarm faz rollback.
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+### Pela CLI
 
-## License
+```bash
+docker stack deploy -c stack.yaml cardapio
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+docker stack services cardapio
+docker service ps cardapio_api --no-trunc
+docker service logs -f cardapio_api
+curl https://api.treifit.com.br/api/health
+```
+
+### Detalhes do `stack.yaml`
+
+- Os dois serviços ficam no nó manager (`placement.constraints`), porque os volumes `pgdata` e `uploads_data` são locais.
+- `db` usa `stop-first` na atualização (dois Postgres no mesmo volume corrompem os dados).
+- Como o Swarm ignora `depends_on`, a api tenta reconectar ao banco (`DB_RETRY_ATTEMPTS` × `DB_RETRY_DELAY_MS`); se esgotar, o container sai e o Swarm o reinicia.
+- `PUBLIC_BASE_URL=https://api.treifit.com.br`: o QR Code aponta para `https://api.treifit.com.br/m/<slug>`.
+- `CORS_ORIGIN=https://cardapiofacil.treifit.com.br`: origem do frontend (várias origens: separe por vírgula).
+
+### Backup do banco
+
+```bash
+docker exec $(docker ps -qf name=cardapio_db) pg_dump -U cardapio cardapio | gzip > backup-$(date +%F).sql.gz
+```
+
+---
+
+## Testando o fluxo completo com curl
+
+```bash
+BASE=http://localhost:3000        # ou https://api.treifit.com.br
+
+# 1. Cadastro (já cria o restaurante) e token
+TOKEN=$(curl -s -X POST $BASE/api/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Maria","email":"maria@exemplo.com","password":"senhaForte123","restaurantName":"Cantina da Nona"}' \
+  | sed -E 's/.*"accessToken":"([^"]+)".*/\1/')
+
+# (login, se já tiver conta)
+# curl -s -X POST $BASE/api/auth/login -H 'Content-Type: application/json' \
+#   -d '{"email":"maria@exemplo.com","password":"senhaForte123"}'
+
+# 2. Upload do cardápio (PDF ou imagem)
+curl -s -X POST $BASE/api/menus \
+  -H "Authorization: Bearer $TOKEN" \
+  -F title="Cardápio de Almoço" \
+  -F "file=@cardapio.pdf;type=application/pdf"
+# -> { "id": "...", "publicSlug": "VCYQdVZfufrs", "publicUrl": ".../m/VCYQdVZfufrs", ... }
+
+MENU_ID=<id retornado>
+SLUG=<publicSlug retornado>
+
+# 3. Listar os cardápios do dono
+curl -s $BASE/api/menus -H "Authorization: Bearer $TOKEN"
+
+# 4. QR Code (PNG e SVG para download)
+curl -s -o qrcode.png "$BASE/api/menus/$MENU_ID/qrcode?format=png" -H "Authorization: Bearer $TOKEN"
+curl -s -OJ "$BASE/api/menus/$MENU_ID/qrcode?format=svg&download=true" -H "Authorization: Bearer $TOKEN"
+
+# 5. O que o cliente vê ao escanear
+curl -s $BASE/m/$SLUG                                          # JSON
+curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' \
+  -H 'Accept: text/html' $BASE/m/$SLUG                         # 302 -> arquivo (sem frontend)
+curl -s $BASE/api/public/menus/$SLUG
+
+# 6. Cardápio manual com itens
+MANUAL_ID=$(curl -s -X POST $BASE/api/menus -H "Authorization: Bearer $TOKEN" -F title="Pratos" \
+  | sed -E 's/.*"id":"([^"]+)".*/\1/')
+curl -s -X POST $BASE/api/menus/$MANUAL_ID/items -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"name":"Lasanha","price":42.9,"category":"Massas"}'
+
+# 7. Alterar e remover
+curl -s -X PATCH $BASE/api/menus/$MENU_ID -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"title":"Almoço Executivo"}'
+curl -s -X DELETE $BASE/api/menus/$MENU_ID -H "Authorization: Bearer $TOKEN" -w '%{http_code}\n'
+```
+
+---
+
+## Scripts
+
+```bash
+npm run build        # compila para dist/
+npm run start:dev    # desenvolvimento com watch
+npm run start:prod   # node dist/main
+npm run lint
+```
+
+> O `package.json` tem um `overrides` para `tsconfck` (dependência de dev do `vite-tsconfig-paths`),
+> que declara peer `typescript ^5`, enquanto o projeto usa TS 6. Sem ele, o `npm ci` do npm 10
+> (que vem na imagem `node:20`) rejeita o `package-lock.json` gerado pelo npm 12.

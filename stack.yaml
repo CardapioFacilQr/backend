@@ -1,0 +1,88 @@
+version: "3.8"
+
+services:
+  api:
+    image: cardapio-api:latest
+    networks:
+      - network_public
+      - app_net
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: cardapio
+      DB_PASSWORD: "68fe78cfa0ce2d43cecffdfd4b82bfecdd01a9418287a549"
+      DB_NAME: cardapio
+      # "true" só no primeiro deploy (cria as tabelas); depois "false".
+      DB_SYNCHRONIZE: "false"
+      DB_RETRY_ATTEMPTS: 20
+      DB_RETRY_DELAY_MS: 3000
+      JWT_SECRET: "dfshubwufweeubejbe7332b23"
+      JWT_EXPIRES_IN: "1d"
+      PUBLIC_BASE_URL: "https://api.treifit.com.br"
+      CORS_ORIGIN: "https://cardapiofacil.treifit.com.br"
+      UPLOAD_DIR: /app/uploads
+      MAX_UPLOAD_MB: 10
+    volumes:
+      - uploads_data:/app/uploads
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/health',{signal:AbortSignal.timeout(4000)}).then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+      update_config:
+        order: start-first
+        failure_action: rollback
+      placement:
+        constraints:
+          - node.role == manager
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=network_public
+        - traefik.http.routers.cardapio-api.rule=Host(`api.treifit.com.br`)
+        - traefik.http.routers.cardapio-api.entrypoints=websecure
+        - traefik.http.routers.cardapio-api.tls=true
+        - traefik.http.routers.cardapio-api.tls.certresolver=letsencrypt
+        - traefik.http.services.cardapio-api.loadbalancer.server.port=3000
+
+  db:
+    image: postgres:16-alpine
+    networks:
+      - app_net
+    environment:
+      POSTGRES_USER: cardapio
+      POSTGRES_PASSWORD: "68fe78cfa0ce2d43cecffdfd4b82bfecdd01a9418287a549"
+      POSTGRES_DB: cardapio
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+      update_config:
+        order: stop-first
+      placement:
+        constraints:
+          - node.role == manager
+
+networks:
+  network_public:
+    external: true
+  app_net:
+    driver: overlay
+    internal: true
+
+volumes:
+  pgdata:
+  uploads_data:
