@@ -54,7 +54,7 @@ Veja [.env.example](.env.example). Principais:
 | `NODE_ENV` | `development` | `production` na imagem |
 | `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_NAME` | `localhost` / `5432` / `postgres` / `cardapio` | |
 | `DB_PASSWORD` ou `DB_PASSWORD_FILE` | — | `*_FILE` lê o valor de um arquivo (Docker secret) |
-| `DB_SYNCHRONIZE` | `false` | `true` só em dev (cria/atualiza tabelas) |
+| `DB_SYNCHRONIZE` | `false` | `true` só em dev (cria/atualiza tabelas). Com `false`, a API roda as migrations ao iniciar |
 | `DB_RETRY_ATTEMPTS` / `DB_RETRY_DELAY_MS` | `10` / `3000` | Reconexão ao banco na inicialização |
 | `JWT_SECRET` ou `JWT_SECRET_FILE` | — | **Obrigatório em produção** |
 | `JWT_EXPIRES_IN` | `1d` | |
@@ -144,8 +144,9 @@ A senha do banco (`DB_PASSWORD` / `POSTGRES_PASSWORD`) e o `JWT_SECRET` estão e
 ### Pelo Portainer
 
 1. **Stacks → Add stack** → nome `cardapio` → *Web editor*: cole o `stack.yaml`.
-2. No **primeiro deploy**, troque `DB_SYNCHRONIZE: "false"` por `"true"` (cria as tabelas) e clique em **Deploy the stack**.
-3. Quando `https://api.treifit.com.br/api/health` responder `{"status":"ok"}`, volte para `"false"` no *Editor* e clique em **Update the stack**.
+2. Clique em **Deploy the stack**. Ao iniciar, a api cria as tabelas sozinha (migrations em `src/migrations/`);
+   `DB_SYNCHRONIZE` fica sempre `"false"` em produção.
+3. Confira: `https://api.treifit.com.br/api/health` deve responder `{"status":"ok"}`.
 4. Nova versão: rode `docker build -t cardapio-api:latest .` de novo na VPS e force a atualização do serviço
    (`docker service update --force cardapio_api`, ou *Update the stack* no Portainer). O `update_config` usa
    `start-first`, sem downtime; se o healthcheck falhar, o Swarm faz rollback.

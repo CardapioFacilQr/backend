@@ -14,7 +14,7 @@ services:
       DB_USER: cardapio
       DB_PASSWORD: "68fe78cfa0ce2d43cecffdfd4b82bfecdd01a9418287a549"
       DB_NAME: cardapio
-      # "true" só no primeiro deploy (cria as tabelas); depois "false".
+      # Mantenha "false": as tabelas são criadas pelas migrations ao iniciar a api.
       DB_SYNCHRONIZE: "false"
       DB_RETRY_ATTEMPTS: 20
       DB_RETRY_DELAY_MS: 3000
