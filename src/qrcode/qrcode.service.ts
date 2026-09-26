@@ -14,9 +14,9 @@ export interface QrCodeImage {
 export class QrcodeService {
   constructor(private readonly config: ConfigService<AppConfig, true>) {}
 
-  /** URL pública que o QR Code aponta: ${PUBLIC_BASE_URL}/m/${publicSlug} */
+  /** URL pública que o QR Code aponta: ${FRONTEND_URL}/m/${publicSlug} */
   menuPublicUrl(publicSlug: string): string {
-    return `${this.config.get('publicBaseUrl', { infer: true })}/m/${publicSlug}`;
+    return `${this.config.get('frontendUrl', { infer: true })}/m/${publicSlug}`;
   }
 
   async generate(

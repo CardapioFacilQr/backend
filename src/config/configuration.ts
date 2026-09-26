@@ -34,14 +34,21 @@ export default function configuration() {
   }
 
   const expiresIn = process.env.JWT_EXPIRES_IN ?? '1d';
+  const publicBaseUrl = (
+    process.env.PUBLIC_BASE_URL ?? `http://localhost:${port}`
+  ).replace(/\/+$/, '');
 
   return {
     nodeEnv,
     isProduction,
     port,
-    publicBaseUrl: (
-      process.env.PUBLIC_BASE_URL ?? `http://localhost:${port}`
-    ).replace(/\/+$/, ''),
+    /** Onde a API responde (usada nas URLs dos arquivos enviados). */
+    publicBaseUrl,
+    /** Onde o frontend responde: destino do QR Code. Sem ela, o QR aponta para a própria API. */
+    frontendUrl: (process.env.FRONTEND_URL || publicBaseUrl).replace(
+      /\/+$/,
+      '',
+    ),
     corsOrigin: process.env.CORS_ORIGIN ?? '*',
     upload: {
       dir:

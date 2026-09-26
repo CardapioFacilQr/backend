@@ -58,7 +58,8 @@ Veja [.env.example](.env.example). Principais:
 | `DB_RETRY_ATTEMPTS` / `DB_RETRY_DELAY_MS` | `10` / `3000` | Reconexão ao banco na inicialização |
 | `JWT_SECRET` ou `JWT_SECRET_FILE` | — | **Obrigatório em produção** |
 | `JWT_EXPIRES_IN` | `1d` | |
-| `PUBLIC_BASE_URL` | `http://localhost:PORT` | Base da URL do QR Code: `${PUBLIC_BASE_URL}/m/<slug>` |
+| `PUBLIC_BASE_URL` | `http://localhost:PORT` | Onde a API responde (URLs dos arquivos enviados) |
+| `FRONTEND_URL` | `PUBLIC_BASE_URL` | Destino do QR Code: `${FRONTEND_URL}/m/<slug>` |
 | `UPLOAD_DIR` | `/app/uploads` (prod) / `./uploads` | |
 | `MAX_UPLOAD_MB` | `10` | |
 | `CORS_ORIGIN` | `*` | Lista separada por vírgula |
@@ -165,7 +166,8 @@ curl https://api.treifit.com.br/api/health
 - Os dois serviços ficam no nó manager (`placement.constraints`), porque os volumes `pgdata` e `uploads_data` são locais.
 - `db` usa `stop-first` na atualização (dois Postgres no mesmo volume corrompem os dados).
 - Como o Swarm ignora `depends_on`, a api tenta reconectar ao banco (`DB_RETRY_ATTEMPTS` × `DB_RETRY_DELAY_MS`); se esgotar, o container sai e o Swarm o reinicia.
-- `PUBLIC_BASE_URL=https://api.treifit.com.br`: o QR Code aponta para `https://api.treifit.com.br/m/<slug>`.
+- `PUBLIC_BASE_URL=https://api.treifit.com.br`: base das URLs dos arquivos enviados.
+- `FRONTEND_URL=https://cardapiofacil.treifit.com.br`: o QR Code aponta para `https://cardapiofacil.treifit.com.br/m/<slug>` (página do frontend).
 - `CORS_ORIGIN=https://cardapiofacil.treifit.com.br`: origem do frontend (várias origens: separe por vírgula).
 
 ### Backup do banco

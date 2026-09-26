@@ -21,6 +21,8 @@ services:
       JWT_SECRET: "dfshubwufweeubejbe7332b23"
       JWT_EXPIRES_IN: "1d"
       PUBLIC_BASE_URL: "https://api.treifit.com.br"
+      # O QR Code abre o frontend: https://cardapiofacil.treifit.com.br/m/<slug>
+      FRONTEND_URL: "https://cardapiofacil.treifit.com.br"
       CORS_ORIGIN: "https://cardapiofacil.treifit.com.br"
       UPLOAD_DIR: /app/uploads
       MAX_UPLOAD_MB: 10
